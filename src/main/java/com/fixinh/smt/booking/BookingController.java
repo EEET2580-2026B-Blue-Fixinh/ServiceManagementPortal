@@ -1,0 +1,94 @@
+package com.fixinh.smt.booking;
+
+import com.fixinh.smt.common.ResourceNotFoundException;
+import com.fixinh.smt.servicecatalog.RepairServiceRepository;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import java.net.URI;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.Year;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/v1/bookings")
+public class BookingController {
+    private final BookingRepository bookings;
+    private final RepairServiceRepository services;
+    public BookingController(BookingRepository bookings, RepairServiceRepository services) {
+        this.bookings = bookings; this.services = services;
+    }
+
+    @PostMapping
+    ResponseEntity<CreateBookingResponse> create(@Valid @RequestBody CreateBookingRequest request) {
+        var service = services.findById(request.serviceId()).filter(s -> s.isActive())
+                .orElseThrow(() -> new ResourceNotFoundException("SERVICE_NOT_FOUND",
+                        "Repair service was not found or is inactive."));
+        if (request.preferredServiceDate().isBefore(LocalDate.now()))
+            throw new IllegalArgumentException("Preferred service date cannot be in the past.");
+        if (!request.availableEndTime().isAfter(request.availableStartTime()) ||
+                request.availableStartTime().plusHours(1).isAfter(request.availableEndTime()))
+            throw new IllegalArgumentException("The available time window must be at least 60 minutes.");
+
+        String ref = "ORD-" + Year.now().getValue() + "-" +
+                ThreadLocalRandom.current().nextInt(1000, 10000);
+        var a = request.serviceAddress();
+        var booking = bookings.save(new Booking(ref, request.customerId(), service.getServiceId(),
+                service.getServiceName(), request.issueDescription(), request.preferredServiceDate(),
+                request.availableStartTime(), request.availableEndTime(),
+                new ServiceAddress(a.streetNumber(), a.streetName(), a.ward(), a.provinceCode())));
+        var response = new CreateBookingResponse(booking.getBookingRef(), booking.getStatus(),
+                booking.getServiceName(), booking.getPreferredServiceDate(), booking.getCreatedAt(),
+                "Your booking has been created. A receptionist will confirm it shortly.");
+        return ResponseEntity.created(URI.create("/api/v1/bookings/" + ref)).body(response);
+    }
+
+    @GetMapping
+    Map<String, Object> list(@RequestParam String customerId) {
+        List<BookingResponse> items = bookings.findByCustomerIdOrderByCreatedAtDesc(customerId)
+                .stream().map(BookingResponse::from).toList();
+        return Map.of("items", items, "page", Map.of("number", 0, "size", items.size(),
+                "totalElements", items.size(), "totalPages", items.isEmpty() ? 0 : 1));
+    }
+
+    @GetMapping("/{bookingRef}")
+    BookingResponse one(@PathVariable String bookingRef) {
+        return BookingResponse.from(bookings.findById(bookingRef).orElseThrow(() ->
+                new ResourceNotFoundException("BOOKING_NOT_FOUND", "Booking not found.")));
+    }
+
+    public record AddressRequest(@NotBlank String streetNumber, @NotBlank String streetName,
+            @NotBlank String ward, @NotBlank String provinceCode) {}
+    public record CreateBookingRequest(@NotBlank String customerId, @NotBlank String serviceId,
+            @NotBlank @Size(min = 10, max = 1000) String issueDescription,
+            @NotNull LocalDate preferredServiceDate, @NotNull LocalTime availableStartTime,
+            @NotNull LocalTime availableEndTime, @NotNull @Valid AddressRequest serviceAddress) {}
+    public record CreateBookingResponse(String bookingRef, BookingStatus status, String serviceName,
+            LocalDate preferredServiceDate, java.time.Instant createdAt, String message) {}
+    public record AddressResponse(String streetNumber, String streetName, String ward, String provinceCode) {}
+    public record BookingResponse(String bookingRef, String customerId, BookingStatus status,
+            String serviceId, String serviceName, String issueDescription,
+            LocalDate preferredServiceDate, LocalTime availableStartTime, LocalTime availableEndTime,
+            java.time.Instant createdAt, AddressResponse serviceAddress) {
+        static BookingResponse from(Booking b) {
+            var a = b.getServiceAddress();
+            return new BookingResponse(b.getBookingRef(), b.getCustomerId(), b.getStatus(),
+                    b.getServiceId(), b.getServiceName(), b.getIssueDescription(),
+                    b.getPreferredServiceDate(), b.getAvailableStartTime(), b.getAvailableEndTime(),
+                    b.getCreatedAt(), new AddressResponse(a.getStreetNumber(), a.getStreetName(),
+                            a.getWard(), a.getProvinceCode()));
+        }
+    }
+}
