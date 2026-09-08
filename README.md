@@ -52,7 +52,7 @@ Base URL: `http://localhost:9443/api/v1`
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/repair-services?activeOnly=true` | Catalogue consumed by SBP |
+| GET | `/repair-services?activeOnly=false` | Catalogue consumed by SBP; includes inactive services by default |
 | POST | `/repair-services` | Create a repair service |
 | PUT | `/repair-services/{serviceId}` | Update a repair service |
 | PATCH | `/repair-services/{serviceId}/status` | Activate/deactivate a service |
@@ -68,6 +68,7 @@ curl -i -X POST http://localhost:9443/api/v1/bookings \
   -H "Content-Type: application/json" \
   -d '{
     "customerId": "CUS-001",
+    "customerFullName": "Nguyen Hong Anh",
     "serviceId": "SVC-PLUMB-01",
     "issueDescription": "Kitchen sink pipe is leaking under the cabinet.",
     "preferredServiceDate": "2026-09-10",
@@ -77,8 +78,9 @@ curl -i -X POST http://localhost:9443/api/v1/bookings \
       "streetNumber": "123",
       "streetName": "Green Street",
       "ward": "Ward 5",
-      "provinceCode": "HCM"
-    }
+      "provinceName": "Ho Chi Minh City"
+    },
+    "originChannel": "SBP"
   }'
 ```
 

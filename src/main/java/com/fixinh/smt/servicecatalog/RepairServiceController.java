@@ -25,7 +25,7 @@ public class RepairServiceController {
     public RepairServiceController(RepairServiceRepository repository) { this.repository = repository; }
 
     @GetMapping
-    Map<String, List<RepairServiceDto>> list(@RequestParam(defaultValue = "true") boolean activeOnly) {
+    Map<String, List<RepairServiceDto>> list(@RequestParam(defaultValue = "false") boolean activeOnly) {
         var values = activeOnly ? repository.findAllByActiveTrueOrderByServiceName()
                 : repository.findAllByOrderByServiceName();
         return Map.of("items", values.stream().map(RepairServiceDto::from).toList());

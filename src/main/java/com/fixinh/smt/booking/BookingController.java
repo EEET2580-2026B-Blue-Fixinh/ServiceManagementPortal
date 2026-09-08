@@ -44,11 +44,18 @@ public class BookingController {
 
         String ref = "ORD-" + Year.now().getValue() + "-" +
                 ThreadLocalRandom.current().nextInt(1000, 10000);
+        if (!"SBP".equals(request.originChannel()))
+            throw new IllegalArgumentException("originChannel must be SBP for integration bookings.");
         var a = request.serviceAddress();
-        var booking = bookings.save(new Booking(ref, request.customerId(), service.getServiceId(),
+        if ((a.provinceCode() == null || a.provinceCode().isBlank()) &&
+                (a.provinceName() == null || a.provinceName().isBlank()))
+            throw new IllegalArgumentException("The service address requires a provinceName or provinceCode.");
+        var booking = bookings.save(new Booking(ref, request.customerId(), request.customerFullName(),
+                service.getServiceId(),
                 service.getServiceName(), request.issueDescription(), request.preferredServiceDate(),
                 request.availableStartTime(), request.availableEndTime(),
-                new ServiceAddress(a.streetNumber(), a.streetName(), a.ward(), a.provinceCode())));
+                new ServiceAddress(a.streetNumber(), a.streetName(), a.ward(), a.provinceCode(),
+                        a.provinceName()), request.originChannel()));
         var response = new CreateBookingResponse(booking.getBookingRef(), booking.getStatus(),
                 booking.getServiceName(), booking.getPreferredServiceDate(), booking.getCreatedAt(),
                 "Your booking has been created. A receptionist will confirm it shortly.");
@@ -70,25 +77,31 @@ public class BookingController {
     }
 
     public record AddressRequest(@NotBlank String streetNumber, @NotBlank String streetName,
-            @NotBlank String ward, @NotBlank String provinceCode) {}
-    public record CreateBookingRequest(@NotBlank String customerId, @NotBlank String serviceId,
+            @NotBlank String ward, String provinceCode, String provinceName) {}
+    public record CreateBookingRequest(@NotBlank String customerId, @NotBlank String customerFullName,
+            @NotBlank String serviceId,
             @NotBlank @Size(min = 10, max = 1000) String issueDescription,
             @NotNull LocalDate preferredServiceDate, @NotNull LocalTime availableStartTime,
-            @NotNull LocalTime availableEndTime, @NotNull @Valid AddressRequest serviceAddress) {}
+            @NotNull LocalTime availableEndTime, @NotNull @Valid AddressRequest serviceAddress,
+            @NotBlank String originChannel) {}
     public record CreateBookingResponse(String bookingRef, BookingStatus status, String serviceName,
             LocalDate preferredServiceDate, java.time.Instant createdAt, String message) {}
-    public record AddressResponse(String streetNumber, String streetName, String ward, String provinceCode) {}
-    public record BookingResponse(String bookingRef, String customerId, BookingStatus status,
+    public record AddressResponse(String streetNumber, String streetName, String ward,
+            String provinceCode, String provinceName) {}
+    public record BookingResponse(String bookingRef, String customerId, String customerFullName,
+            BookingStatus status,
             String serviceId, String serviceName, String issueDescription,
             LocalDate preferredServiceDate, LocalTime availableStartTime, LocalTime availableEndTime,
-            java.time.Instant createdAt, AddressResponse serviceAddress) {
+            java.time.Instant createdAt, String originChannel, AddressResponse serviceAddress) {
         static BookingResponse from(Booking b) {
             var a = b.getServiceAddress();
-            return new BookingResponse(b.getBookingRef(), b.getCustomerId(), b.getStatus(),
+            return new BookingResponse(b.getBookingRef(), b.getCustomerId(), b.getCustomerFullName(),
+                    b.getStatus(),
                     b.getServiceId(), b.getServiceName(), b.getIssueDescription(),
                     b.getPreferredServiceDate(), b.getAvailableStartTime(), b.getAvailableEndTime(),
-                    b.getCreatedAt(), new AddressResponse(a.getStreetNumber(), a.getStreetName(),
-                            a.getWard(), a.getProvinceCode()));
+                    b.getCreatedAt(), b.getOriginChannel(),
+                    new AddressResponse(a.getStreetNumber(), a.getStreetName(),
+                            a.getWard(), a.getProvinceCode(), a.getProvinceName()));
         }
     }
 }
