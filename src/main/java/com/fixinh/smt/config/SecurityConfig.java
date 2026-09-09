@@ -1,15 +1,20 @@
 package com.fixinh.smt.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -23,15 +28,39 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class SecurityConfig {
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http,
-            @Value("${smt.security.service-token}") String serviceToken) throws Exception {
+            @Value("${smt.security.service-token}") String serviceToken,
+            ObjectMapper objectMapper) throws Exception {
         var filter = new ServiceTokenFilter(serviceToken);
         return http.csrf(csrf -> csrf.disable())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(errors -> errors
+                        .authenticationEntryPoint((request, response, exception) ->
+                                writeError(request, response, objectMapper,
+                                        HttpStatus.UNAUTHORIZED, "UNAUTHORIZED",
+                                        "A valid service bearer token is required."))
+                        .accessDeniedHandler((request, response, exception) ->
+                                writeError(request, response, objectMapper,
+                                        HttpStatus.FORBIDDEN, "FORBIDDEN",
+                                        "The authenticated service is not allowed to access this resource.")))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                        .requestMatchers("/actuator/health", "/actuator/info", "/error").permitAll()
                         .anyRequest().hasRole("SERVICE"))
                 .addFilterBefore(filter, UsernamePasswordAuthenticationFilter.class)
                 .build();
+    }
+
+    private static void writeError(HttpServletRequest request, HttpServletResponse response,
+            ObjectMapper objectMapper, HttpStatus status, String code, String message)
+            throws IOException {
+        response.setStatus(status.value());
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        objectMapper.writeValue(response.getOutputStream(), Map.of(
+                "timestamp", Instant.now().toString(),
+                "path", request.getRequestURI(),
+                "status", status.value(),
+                "error", code,
+                "message", message,
+                "fieldErrors", List.of()));
     }
 
     private static final class ServiceTokenFilter extends OncePerRequestFilter {
