@@ -11,10 +11,26 @@ public class SeedData {
     @Bean
     CommandLineRunner seedRepairServices(RepairServiceRepository repository) {
         return args -> {
-            if (repository.count() > 0) return;
-            repository.save(new RepairService("SVC-PLUMB-01", "Plumbing Repair", "Plumbing", 500000, 120, true));
-            repository.save(new RepairService("SVC-ELEC-02", "Electrical Repair", "Electrical", 450000, 90, true));
-            repository.save(new RepairService("SVC-APPL-03", "Appliance Repair", "Appliances", 400000, 90, true));
+            addIfMissing(repository, new RepairService(
+                    "SVC-PLUMB-01", "Plumbing Repair", "Plumbing", 500000, 120, true));
+            addIfMissing(repository, new RepairService(
+                    "SVC-ELEC-02", "Electrical Repair", "Electrical", 450000, 90, true));
+            addIfMissing(repository, new RepairService(
+                    "SVC-APPL-03", "Appliance Repair", "Appliances", 400000, 90, true));
+            addIfMissing(repository, new RepairService(
+                    "SVC-AC-04", "Air Conditioner Repair", "HVAC", 600000, 120, true));
+            addIfMissing(repository, new RepairService(
+                    "SVC-CARP-05", "Carpentry Repair", "Carpentry", 550000, 120, true));
+            addIfMissing(repository, new RepairService(
+                    "SVC-PAINT-06", "Home Painting", "Painting", 700000, 180, true));
+            addIfMissing(repository, new RepairService(
+                    "SVC-ROOF-07", "Roof Repair", "Roofing", 800000, 180, true));
         };
+    }
+
+    private void addIfMissing(RepairServiceRepository repository, RepairService service) {
+        if (!repository.existsById(service.getServiceId())) {
+            repository.save(service);
+        }
     }
 }
