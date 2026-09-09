@@ -5,15 +5,20 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import org.springframework.data.domain.Persistable;
 
 @Entity
 @Table(name = "bookings")
-public class Booking {
+public class Booking implements Persistable<String> {
     @Id private String bookingRef;
+    @Transient private boolean newEntity = true;
     private String customerId;
     private String customerFullName;
     private String serviceId;
@@ -41,6 +46,11 @@ public class Booking {
         this.originChannel = originChannel;
     }
     public String getBookingRef() { return bookingRef; }
+    @Override public String getId() { return bookingRef; }
+    @Override public boolean isNew() { return newEntity; }
+    @PostPersist
+    @PostLoad
+    void markNotNew() { newEntity = false; }
     public String getCustomerId() { return customerId; }
     public String getCustomerFullName() { return customerFullName; }
     public String getServiceId() { return serviceId; }

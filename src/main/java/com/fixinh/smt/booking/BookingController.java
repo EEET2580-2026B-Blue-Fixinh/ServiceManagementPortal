@@ -12,7 +12,7 @@ import java.time.LocalTime;
 import java.time.Year;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -42,15 +42,14 @@ public class BookingController {
                 request.availableStartTime().plusHours(1).isAfter(request.availableEndTime()))
             throw new IllegalArgumentException("The available time window must be at least 60 minutes.");
 
-        String ref = "ORD-" + Year.now().getValue() + "-" +
-                ThreadLocalRandom.current().nextInt(1000, 10000);
+        String ref = "ORD-" + Year.now().getValue() + "-" + UUID.randomUUID();
         if (!"SBP".equals(request.originChannel()))
             throw new IllegalArgumentException("originChannel must be SBP for integration bookings.");
         var a = request.serviceAddress();
         if ((a.provinceCode() == null || a.provinceCode().isBlank()) &&
                 (a.provinceName() == null || a.provinceName().isBlank()))
             throw new IllegalArgumentException("The service address requires a provinceName or provinceCode.");
-        var booking = bookings.save(new Booking(ref, request.customerId(), request.customerFullName(),
+        var booking = bookings.saveAndFlush(new Booking(ref, request.customerId(), request.customerFullName(),
                 service.getServiceId(),
                 service.getServiceName(), request.issueDescription(), request.preferredServiceDate(),
                 request.availableStartTime(), request.availableEndTime(),
