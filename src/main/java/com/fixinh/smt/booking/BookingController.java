@@ -1,6 +1,7 @@
 package com.fixinh.smt.booking;
 
 import com.fixinh.smt.common.ResourceNotFoundException;
+import com.fixinh.smt.servicecatalog.RepairService;
 import com.fixinh.smt.servicecatalog.RepairServiceRepository;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -12,7 +13,8 @@ import java.time.LocalTime;
 import java.time.Year;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -42,23 +44,37 @@ public class BookingController {
                 request.availableStartTime().plusHours(1).isAfter(request.availableEndTime()))
             throw new IllegalArgumentException("The available time window must be at least 60 minutes.");
 
-        String ref = "ORD-" + Year.now().getValue() + "-" + UUID.randomUUID();
         if (!"SBP".equals(request.originChannel()))
             throw new IllegalArgumentException("originChannel must be SBP for integration bookings.");
         var a = request.serviceAddress();
         if ((a.provinceCode() == null || a.provinceCode().isBlank()) &&
                 (a.provinceName() == null || a.provinceName().isBlank()))
             throw new IllegalArgumentException("The service address requires a provinceName or provinceCode.");
-        var booking = bookings.saveAndFlush(new Booking(ref, request.customerId(), request.customerFullName(),
-                service.getServiceId(),
-                service.getServiceName(), request.issueDescription(), request.preferredServiceDate(),
-                request.availableStartTime(), request.availableEndTime(),
-                new ServiceAddress(a.streetNumber(), a.streetName(), a.ward(), a.provinceCode(),
-                        a.provinceName()), request.originChannel()));
+        var booking = persistWithUniqueReference(request, service);
         var response = new CreateBookingResponse(booking.getBookingRef(), booking.getStatus(),
                 booking.getServiceName(), booking.getPreferredServiceDate(), booking.getCreatedAt(),
                 "Your booking has been created. A receptionist will confirm it shortly.");
-        return ResponseEntity.created(URI.create("/api/v1/bookings/" + ref)).body(response);
+        return ResponseEntity.created(URI.create("/api/v1/bookings/" + booking.getBookingRef())).body(response);
+    }
+
+    private Booking persistWithUniqueReference(CreateBookingRequest request, RepairService service) {
+        int firstNumber = ThreadLocalRandom.current().nextInt(1000, 10000);
+        for (int offset = 0; offset < 9000; offset++) {
+            int number = 1000 + ((firstNumber - 1000 + offset) % 9000);
+            String ref = "ORD-" + Year.now().getValue() + "-" + number;
+            var a = request.serviceAddress();
+            try {
+                return bookings.saveAndFlush(new Booking(ref, request.customerId(),
+                        request.customerFullName(), service.getServiceId(), service.getServiceName(),
+                        request.issueDescription(), request.preferredServiceDate(),
+                        request.availableStartTime(), request.availableEndTime(),
+                        new ServiceAddress(a.streetNumber(), a.streetName(), a.ward(),
+                                a.provinceCode(), a.provinceName()), request.originChannel()));
+            } catch (DataIntegrityViolationException exception) {
+                if (!bookings.existsById(ref)) throw exception;
+            }
+        }
+        throw new IllegalStateException("No booking references remain for the current year.");
     }
 
     @GetMapping
