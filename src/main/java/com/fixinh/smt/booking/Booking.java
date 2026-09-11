@@ -1,5 +1,11 @@
 package com.fixinh.smt.booking;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalTime;
+
+import org.springframework.data.domain.Persistable;
+
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -9,10 +15,6 @@ import jakarta.persistence.PostLoad;
 import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalTime;
-import org.springframework.data.domain.Persistable;
 
 @Entity
 @Table(name = "bookings")
@@ -29,28 +31,44 @@ public class Booking implements Persistable<String> {
     private LocalTime availableEndTime;
     @Embedded private ServiceAddress serviceAddress;
     @Enumerated(EnumType.STRING) private BookingStatus status;
+    private Long estimatedServiceFee;
+    private Integer estimatedDurationMinutes;
     private Instant createdAt;
     private String originChannel;
 
     protected Booking() {}
+
     public Booking(String bookingRef, String customerId, String customerFullName,
             String serviceId, String serviceName,
             String issueDescription, LocalDate preferredServiceDate, LocalTime availableStartTime,
             LocalTime availableEndTime, ServiceAddress serviceAddress, String originChannel) {
-        this.bookingRef = bookingRef; this.customerId = customerId; this.serviceId = serviceId;
+        this.bookingRef = bookingRef;
+        this.customerId = customerId;
         this.customerFullName = customerFullName;
-        this.serviceName = serviceName; this.issueDescription = issueDescription;
-        this.preferredServiceDate = preferredServiceDate; this.availableStartTime = availableStartTime;
-        this.availableEndTime = availableEndTime; this.serviceAddress = serviceAddress;
-        this.status = BookingStatus.CREATED; this.createdAt = Instant.now();
+        this.serviceId = serviceId;
+        this.serviceName = serviceName;
+        this.issueDescription = issueDescription;
+        this.preferredServiceDate = preferredServiceDate;
+        this.availableStartTime = availableStartTime;
+        this.availableEndTime = availableEndTime;
+        this.serviceAddress = serviceAddress;
+        this.status = BookingStatus.CREATED;
+        this.createdAt = Instant.now();
         this.originChannel = originChannel;
     }
+
     public String getBookingRef() { return bookingRef; }
-    @Override public String getId() { return bookingRef; }
-    @Override public boolean isNew() { return newEntity; }
+
+    @Override
+    public String getId() { return bookingRef; }
+
+    @Override
+    public boolean isNew() { return newEntity; }
+
     @PostPersist
     @PostLoad
     void markNotNew() { newEntity = false; }
+
     public String getCustomerId() { return customerId; }
     public String getCustomerFullName() { return customerFullName; }
     public String getServiceId() { return serviceId; }
@@ -61,6 +79,18 @@ public class Booking implements Persistable<String> {
     public LocalTime getAvailableEndTime() { return availableEndTime; }
     public ServiceAddress getServiceAddress() { return serviceAddress; }
     public BookingStatus getStatus() { return status; }
+    public Long getEstimatedServiceFee() { return estimatedServiceFee; }
+    public Integer getEstimatedDurationMinutes() { return estimatedDurationMinutes; }
     public Instant getCreatedAt() { return createdAt; }
     public String getOriginChannel() { return originChannel; }
+
+    public void confirm(long estimatedServiceFee, int estimatedDurationMinutes) {
+        if (status != BookingStatus.CREATED) {
+            throw new IllegalArgumentException(
+                    "Only bookings with CREATED status can be confirmed.");
+        }
+        this.estimatedServiceFee = estimatedServiceFee;
+        this.estimatedDurationMinutes = estimatedDurationMinutes;
+        this.status = BookingStatus.CONFIRMED;
+    }
 }
