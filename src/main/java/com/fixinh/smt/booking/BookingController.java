@@ -53,14 +53,17 @@ public class BookingController {
         var service = services.findById(request.serviceId()).filter(s -> s.isActive())
                 .orElseThrow(() -> new ResourceNotFoundException("SERVICE_NOT_FOUND",
                         "Repair service was not found or is inactive."));
+
         if (request.preferredServiceDate().isBefore(LocalDate.now())) {
             throw new IllegalArgumentException("Preferred service date cannot be in the past.");
         }
+
         if (!request.availableEndTime().isAfter(request.availableStartTime())
                 || request.availableStartTime().plusHours(1).isAfter(request.availableEndTime())) {
             throw new IllegalArgumentException(
                     "The available time window must be at least 60 minutes.");
         }
+
         if (!"SBP".equals(request.originChannel())) {
             throw new IllegalArgumentException(
                     "originChannel must be SBP for integration bookings.");
@@ -218,6 +221,10 @@ public class BookingController {
             String provinceCode,
             String provinceName) {}
 
+    public record TechnicianResponse(
+            String technicianId,
+            String fullName) {}
+
     public record BookingResponse(
             String bookingRef,
             String customerId,
@@ -233,6 +240,7 @@ public class BookingController {
             Integer estimatedDurationMinutes,
             LocalDateTime scheduledAt,
             List<String> technicianNames,
+            List<TechnicianResponse> technicians,
             Long completedServiceFee,
             Long materialCost,
             Long totalCost,
@@ -243,6 +251,7 @@ public class BookingController {
 
         static BookingResponse from(Booking booking) {
             var address = booking.getServiceAddress();
+
             return new BookingResponse(
                     booking.getBookingRef(),
                     booking.getCustomerId(),
@@ -260,6 +269,13 @@ public class BookingController {
                     booking.getTechnicians().stream()
                             .map(technician -> technician.getFullName())
                             .sorted()
+                            .toList(),
+                    booking.getTechnicians().stream()
+                            .map(technician -> new TechnicianResponse(
+                                    technician.getTechnicianId(),
+                                    technician.getFullName()))
+                            .sorted((first, second) ->
+                                    first.technicianId().compareTo(second.technicianId()))
                             .toList(),
                     booking.getCompletedServiceFee(),
                     booking.getMaterialCost(),
