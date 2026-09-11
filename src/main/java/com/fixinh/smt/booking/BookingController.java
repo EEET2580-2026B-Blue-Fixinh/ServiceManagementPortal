@@ -26,12 +26,17 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/bookings")
-public class BookingController {
+    public class BookingController {
     private final BookingRepository bookings;
     private final RepairServiceRepository services;
-    public BookingController(BookingRepository bookings, RepairServiceRepository services) {
-        this.bookings = bookings; this.services = services;
-    }
+    private final BookingService bookingService;
+
+public BookingController(BookingRepository bookings, RepairServiceRepository services,
+        BookingService bookingService) {
+    this.bookings = bookings;
+    this.services = services;
+    this.bookingService = bookingService;
+}
 
     @PostMapping
     ResponseEntity<CreateBookingResponse> create(@Valid @RequestBody CreateBookingRequest request) {
@@ -78,11 +83,12 @@ public class BookingController {
     }
 
     @GetMapping
-    Map<String, Object> list(@RequestParam String customerId) {
-        List<BookingResponse> items = bookings.findByCustomerIdOrderByCreatedAtDesc(customerId)
-                .stream().map(BookingResponse::from).toList();
-        return Map.of("items", items, "page", Map.of("number", 0, "size", items.size(),
-                "totalElements", items.size(), "totalPages", items.isEmpty() ? 0 : 1));
+Map<String, Object> list(@RequestParam(required = false) String customerId,
+        @RequestParam(required = false) BookingStatus status) {
+    List<BookingResponse> items = bookingService.findBookings(customerId, status)
+            .stream().map(BookingResponse::from).toList();
+    return Map.of("items", items, "page", Map.of("number", 0, "size", items.size(),
+            "totalElements", items.size(), "totalPages", items.isEmpty() ? 0 : 1));
     }
 
     @GetMapping("/{bookingRef}")
