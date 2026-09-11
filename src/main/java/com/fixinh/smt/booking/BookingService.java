@@ -1,8 +1,10 @@
 package com.fixinh.smt.booking;
 
+import com.fixinh.smt.common.ResourceNotFoundException;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
@@ -29,5 +31,14 @@ public class BookingService {
         throw new ResponseStatusException(
                 HttpStatus.BAD_REQUEST,
                 "Provide at least one booking filter: customerId or status.");
+    }
+
+    @Transactional
+    public Booking confirmBooking(String bookingRef, long estimatedServiceFee,
+            int estimatedDurationMinutes) {
+        Booking booking = bookings.findById(bookingRef).orElseThrow(() ->
+                new ResourceNotFoundException("BOOKING_NOT_FOUND", "Booking not found."));
+        booking.confirm(estimatedServiceFee, estimatedDurationMinutes);
+        return booking;
     }
 }
