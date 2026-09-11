@@ -1,20 +1,14 @@
 package com.fixinh.smt.booking;
 
-import com.fixinh.smt.common.ResourceNotFoundException;
-import com.fixinh.smt.servicecatalog.RepairService;
-import com.fixinh.smt.servicecatalog.RepairServiceRepository;
-import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
-import jakarta.validation.constraints.Size;
 import java.net.URI;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.Year;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
+
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,6 +19,18 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import com.fixinh.smt.common.ResourceNotFoundException;
+import com.fixinh.smt.servicecatalog.RepairService;
+import com.fixinh.smt.servicecatalog.RepairServiceRepository;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Future;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 
 @RestController
 @RequestMapping("/api/v1/bookings")
@@ -141,6 +147,15 @@ public class BookingController {
                 request.estimatedDurationMinutes()));
     }
 
+    @PatchMapping("/{bookingRef}/schedule")
+    BookingResponse schedule(@PathVariable String bookingRef,
+            @Valid @RequestBody ScheduleRequest request) {
+        return BookingResponse.from(bookingService.scheduleBooking(
+                bookingRef,
+                request.scheduledAt(),
+                request.technicianIds()));
+    }
+
     @GetMapping("/{bookingRef}")
     BookingResponse one(@PathVariable String bookingRef) {
         return BookingResponse.from(bookings.findById(bookingRef).orElseThrow(() ->
@@ -168,6 +183,10 @@ public class BookingController {
     public record ConfirmationRequest(
             @NotNull @Positive Long estimatedServiceFee,
             @NotNull @Positive Integer estimatedDurationMinutes) {}
+
+    public record ScheduleRequest(
+            @NotNull @Future LocalDateTime scheduledAt,
+            @NotEmpty List<@NotBlank String> technicianIds) {}
 
     public record CreateBookingResponse(
             String bookingRef,
@@ -197,6 +216,8 @@ public class BookingController {
             LocalTime availableEndTime,
             Long estimatedServiceFee,
             Integer estimatedDurationMinutes,
+            LocalDateTime scheduledAt,
+            List<String> technicianNames,
             java.time.Instant createdAt,
             String originChannel,
             AddressResponse serviceAddress) {
@@ -216,6 +237,11 @@ public class BookingController {
                     booking.getAvailableEndTime(),
                     booking.getEstimatedServiceFee(),
                     booking.getEstimatedDurationMinutes(),
+                    booking.getScheduledAt(),
+                    booking.getTechnicians().stream()
+                            .map(technician -> technician.getFullName())
+                            .sorted()
+                            .toList(),
                     booking.getCreatedAt(),
                     booking.getOriginChannel(),
                     new AddressResponse(
