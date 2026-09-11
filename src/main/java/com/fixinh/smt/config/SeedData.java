@@ -2,6 +2,8 @@ package com.fixinh.smt.config;
 
 import com.fixinh.smt.servicecatalog.RepairService;
 import com.fixinh.smt.servicecatalog.RepairServiceRepository;
+import com.fixinh.smt.technician.Technician;
+import com.fixinh.smt.technician.TechnicianRepository;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,9 +30,27 @@ public class SeedData {
         };
     }
 
+    @Bean
+    CommandLineRunner seedTechnicians(TechnicianRepository repository) {
+        return args -> {
+            addIfMissing(repository,
+                    new Technician("TECH-001", "Nguyen Minh Anh", "Electrical", true));
+            addIfMissing(repository,
+                    new Technician("TECH-002", "Tran Quoc Bao", "Plumbing", true));
+            addIfMissing(repository,
+                    new Technician("TECH-003", "Le Thu Ha", "HVAC", true));
+        };
+    }
+
     private void addIfMissing(RepairServiceRepository repository, RepairService service) {
         if (!repository.existsById(service.getServiceId())) {
             repository.save(service);
+        }
+    }
+
+    private void addIfMissing(TechnicianRepository repository, Technician technician) {
+        if (!repository.existsById(technician.getTechnicianId())) {
+            repository.save(technician);
         }
     }
 }
