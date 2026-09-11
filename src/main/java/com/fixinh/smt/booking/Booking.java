@@ -52,6 +52,10 @@ public class Booking implements Persistable<String> {
     private Long estimatedServiceFee;
     private Integer estimatedDurationMinutes;
     private LocalDateTime scheduledAt;
+    private Long completedServiceFee;
+    private Long materialCost;
+    private Long totalCost;
+    private Instant completedAt;
 
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
@@ -109,6 +113,10 @@ public class Booking implements Persistable<String> {
     public Long getEstimatedServiceFee() { return estimatedServiceFee; }
     public Integer getEstimatedDurationMinutes() { return estimatedDurationMinutes; }
     public LocalDateTime getScheduledAt() { return scheduledAt; }
+    public Long getCompletedServiceFee() { return completedServiceFee; }
+    public Long getMaterialCost() { return materialCost; }
+    public Long getTotalCost() { return totalCost; }
+    public Instant getCompletedAt() { return completedAt; }
     public Set<Technician> getTechnicians() { return Set.copyOf(technicians); }
     public Instant getCreatedAt() { return createdAt; }
     public String getOriginChannel() { return originChannel; }
@@ -136,5 +144,21 @@ public class Booking implements Persistable<String> {
         this.technicians.clear();
         this.technicians.addAll(technicians);
         this.status = BookingStatus.SCHEDULED;
+    }
+
+    public void complete(long completedServiceFee, long materialCost) {
+        if (status != BookingStatus.SCHEDULED) {
+            throw new IllegalArgumentException(
+                    "Only bookings with SCHEDULED status can be completed.");
+        }
+        this.completedServiceFee = completedServiceFee;
+        this.materialCost = materialCost;
+        try {
+            this.totalCost = Math.addExact(completedServiceFee, materialCost);
+        } catch (ArithmeticException exception) {
+            throw new IllegalArgumentException("The supplied costs are too large.");
+        }
+        this.completedAt = Instant.now();
+        this.status = BookingStatus.COMPLETED;
     }
 }

@@ -1,6 +1,7 @@
 package com.fixinh.smt.booking;
 
 import java.net.URI;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -30,6 +31,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
 @RestController
@@ -156,6 +158,15 @@ public class BookingController {
                 request.technicianIds()));
     }
 
+    @PatchMapping("/{bookingRef}/completion")
+    BookingResponse complete(@PathVariable String bookingRef,
+            @Valid @RequestBody CompletionRequest request) {
+        return BookingResponse.from(bookingService.completeBooking(
+                bookingRef,
+                request.completedServiceFee(),
+                request.materialCost()));
+    }
+
     @GetMapping("/{bookingRef}")
     BookingResponse one(@PathVariable String bookingRef) {
         return BookingResponse.from(bookings.findById(bookingRef).orElseThrow(() ->
@@ -188,12 +199,16 @@ public class BookingController {
             @NotNull @Future LocalDateTime scheduledAt,
             @NotEmpty List<@NotBlank String> technicianIds) {}
 
+    public record CompletionRequest(
+            @NotNull @Positive Long completedServiceFee,
+            @NotNull @PositiveOrZero Long materialCost) {}
+
     public record CreateBookingResponse(
             String bookingRef,
             BookingStatus status,
             String serviceName,
             LocalDate preferredServiceDate,
-            java.time.Instant createdAt,
+            Instant createdAt,
             String message) {}
 
     public record AddressResponse(
@@ -218,7 +233,11 @@ public class BookingController {
             Integer estimatedDurationMinutes,
             LocalDateTime scheduledAt,
             List<String> technicianNames,
-            java.time.Instant createdAt,
+            Long completedServiceFee,
+            Long materialCost,
+            Long totalCost,
+            Instant completedAt,
+            Instant createdAt,
             String originChannel,
             AddressResponse serviceAddress) {
 
@@ -242,6 +261,10 @@ public class BookingController {
                             .map(technician -> technician.getFullName())
                             .sorted()
                             .toList(),
+                    booking.getCompletedServiceFee(),
+                    booking.getMaterialCost(),
+                    booking.getTotalCost(),
+                    booking.getCompletedAt(),
                     booking.getCreatedAt(),
                     booking.getOriginChannel(),
                     new AddressResponse(

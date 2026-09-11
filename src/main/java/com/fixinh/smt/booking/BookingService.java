@@ -74,6 +74,13 @@ public class BookingService {
         return booking;
     }
 
+    @Transactional
+    public Booking completeBooking(String bookingRef, long completedServiceFee,
+        long materialCost) {
+    Booking booking = findBooking(bookingRef);
+    booking.complete(completedServiceFee, materialCost);
+    return booking;
+    }
     private Booking findBooking(String bookingRef) {
         return bookings.findById(bookingRef).orElseThrow(() ->
                 new ResourceNotFoundException("BOOKING_NOT_FOUND", "Booking not found."));
