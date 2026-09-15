@@ -1,5 +1,5 @@
 server:
-  port: 9443
+  port: ${PORT:9443}
 
 spring:
   application:
@@ -22,6 +22,8 @@ management:
 smt:
   security:
     service-token: ${SMP_SERVICE_TOKEN:local-integration-token}
+  cors:
+    allowed-origin: ${SMT_CORS_ALLOWED_ORIGIN:http://localhost:5173}
 
 ---
 spring:
