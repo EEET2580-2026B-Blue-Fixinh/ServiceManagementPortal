@@ -5,7 +5,11 @@
 .app-shell {
   min-height: 100vh;
   background:
-    radial-gradient(circle at top right, rgba(37, 99, 235, 0.11), transparent 34rem),
+    radial-gradient(
+      circle at top right,
+      rgba(37, 99, 235, 0.11),
+      transparent 34rem
+    ),
     #f5f7fb;
   color: #172033;
 }
@@ -126,7 +130,9 @@ button:disabled {
 .refresh-button,
 .error-card button,
 .search-card button,
-.transition-panel form > button {
+.transition-panel form > button,
+.create-booking-form .form-footer button,
+.created-booking button {
   padding: 12px 17px;
   background: #1d4ed8;
   color: white;
@@ -188,7 +194,9 @@ button:disabled {
 .state-card,
 .search-card,
 .booking-overview,
-.transition-panel {
+.transition-panel,
+.catalogue-panel,
+.create-booking-form {
   border: 1px solid #dce3ee;
   border-radius: 17px;
   background: white;
@@ -396,6 +404,24 @@ input:focus {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
+textarea {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid #cfd8e6;
+  border-radius: 10px;
+  outline: none;
+  resize: vertical;
+  background: white;
+  color: #172033;
+  font: inherit;
+  line-height: 1.5;
+}
+
+textarea:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
 .message {
   margin-bottom: 20px;
   padding: 13px 16px;
@@ -522,6 +548,168 @@ input:focus {
   line-height: 1.55;
 }
 
+.compact-state {
+  min-height: 150px;
+}
+
+.booking-form-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.72fr) minmax(0, 1.28fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.catalogue-panel,
+.create-booking-form {
+  padding: 24px;
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.section-heading h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.section-heading > span {
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.service-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.service-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  padding: 14px;
+  border: 1px solid #dce3ee;
+  border-radius: 12px;
+  background: #f9fafc;
+  cursor: pointer;
+}
+
+.service-option.selected {
+  border-color: #60a5fa;
+  background: #eff6ff;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.08);
+}
+
+.service-option input {
+  width: 17px;
+  min-height: 17px;
+  margin: 0;
+}
+
+.service-option > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.service-option small,
+.catalogue-empty {
+  color: #7a8497;
+  font-size: 0.74rem;
+}
+
+.service-meta {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.catalogue-empty {
+  margin: 0;
+  padding: 24px 0;
+  text-align: center;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.form-grid label,
+.time-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: #465269;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.form-span {
+  grid-column: 1 / -1;
+}
+
+.time-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.form-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid #e7ebf2;
+}
+
+.form-footer span {
+  color: #7a8497;
+  font-size: 0.78rem;
+}
+
+.created-booking {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding: 16px;
+  border: 1px solid #a7f3d0;
+  border-radius: 12px;
+  background: #ecfdf3;
+}
+
+.created-booking div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.created-booking span,
+.created-booking small {
+  color: #047857;
+  font-size: 0.76rem;
+}
+
+.created-booking strong {
+  color: #065f46;
+  font-size: 1.05rem;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
@@ -546,6 +734,10 @@ input:focus {
   }
 
   .workflow-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .booking-form-layout {
     grid-template-columns: 1fr;
   }
 }
@@ -577,6 +769,11 @@ input:focus {
   .cost-summary {
     grid-template-columns: 1fr;
   }
+
+  .created-booking {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }
 
 @media (max-width: 520px) {
@@ -594,6 +791,20 @@ input:focus {
   }
 
   .booking-card-header {
+    flex-direction: column;
+  }
+
+  .form-grid,
+  .time-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .form-span {
+    grid-column: auto;
+  }
+
+  .form-footer {
+    align-items: stretch;
     flex-direction: column;
   }
 }
