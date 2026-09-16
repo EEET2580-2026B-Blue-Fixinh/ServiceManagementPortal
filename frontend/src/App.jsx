@@ -1,182 +1,311 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { apiRequest } from './api'
-import './App.css'
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { apiRequest } from "./api";
+import "./App.css";
 
 const SEEDED_TECHNICIANS = [
-  { technicianId: 'TECH-001', fullName: 'Nguyen Minh Anh' },
-  { technicianId: 'TECH-002', fullName: 'Tran Quoc Bao' },
-  { technicianId: 'TECH-003', fullName: 'Le Thu Ha' },
-]
+  { technicianId: "TECH-001", fullName: "Nguyen Minh Anh" },
+  { technicianId: "TECH-002", fullName: "Tran Quoc Bao" },
+  { technicianId: "TECH-003", fullName: "Le Thu Ha" },
+];
 
 function formatDate(value) {
-  if (!value) return 'Not provided'
+  if (!value) return "Not provided";
 
-  return new Intl.DateTimeFormat('en-AU', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(new Date(`${value}T00:00:00`))
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(`${value}T00:00:00`));
 }
 
 function formatDateTime(value) {
-  if (!value) return 'Not provided'
+  if (!value) return "Not provided";
 
-  return new Intl.DateTimeFormat('en-AU', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value))
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 function formatTime(value) {
-  return value ? value.slice(0, 5) : '—'
+  return value ? value.slice(0, 5) : "—";
 }
 
 function formatMoney(value) {
-  if (value === null || value === undefined) return 'Not recorded'
+  if (value === null || value === undefined) return "Not recorded";
 
-  return new Intl.NumberFormat('vi-VN', {
-    style: 'currency',
-    currency: 'VND',
+  return new Intl.NumberFormat("vi-VN", {
+    style: "currency",
+    currency: "VND",
     maximumFractionDigits: 0,
-  }).format(value)
+  }).format(value);
+}
+
+const EMPTY_BOOKING_FORM = {
+  customerId: "",
+  customerFullName: "",
+  serviceId: "",
+  issueDescription: "",
+  preferredServiceDate: "",
+  availableStartTime: "09:00",
+  availableEndTime: "10:00",
+  streetNumber: "",
+  streetName: "",
+  ward: "",
+  provinceCode: "",
+  provinceName: "",
+};
+
+function todayAsInputValue() {
+  const now = new Date();
+  const offset = now.getTimezoneOffset() * 60_000;
+  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
 }
 
 function App() {
-  const [view, setView] = useState('queue')
-  const [bookings, setBookings] = useState([])
-  const [queueLoading, setQueueLoading] = useState(true)
-  const [queueError, setQueueError] = useState('')
-  const [lastUpdated, setLastUpdated] = useState(null)
-  const [visibleCount, setVisibleCount] = useState(24)
+  const [view, setView] = useState("queue");
+  const [bookings, setBookings] = useState([]);
+  const [queueLoading, setQueueLoading] = useState(true);
+  const [queueError, setQueueError] = useState("");
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [visibleCount, setVisibleCount] = useState(24);
 
-  const [searchRef, setSearchRef] = useState('')
-  const [booking, setBooking] = useState(null)
-  const [workflowLoading, setWorkflowLoading] = useState(false)
-  const [workflowError, setWorkflowError] = useState('')
-  const [notice, setNotice] = useState('')
-  const [actionLoading, setActionLoading] = useState(false)
+  const [searchRef, setSearchRef] = useState("");
+  const [booking, setBooking] = useState(null);
+  const [workflowLoading, setWorkflowLoading] = useState(false);
+  const [workflowError, setWorkflowError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [actionLoading, setActionLoading] = useState(false);
 
-  const [estimatedServiceFee, setEstimatedServiceFee] = useState('')
-  const [estimatedDurationMinutes, setEstimatedDurationMinutes] = useState('')
-  const [scheduledAt, setScheduledAt] = useState('')
-  const [technicianIds, setTechnicianIds] = useState([])
-  const [completedServiceFee, setCompletedServiceFee] = useState('')
-  const [materialCost, setMaterialCost] = useState('')
+  const [estimatedServiceFee, setEstimatedServiceFee] = useState("");
+  const [estimatedDurationMinutes, setEstimatedDurationMinutes] = useState("");
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [technicianIds, setTechnicianIds] = useState([]);
+  const [completedServiceFee, setCompletedServiceFee] = useState("");
+  const [materialCost, setMaterialCost] = useState("");
+
+  const [services, setServices] = useState([]);
+  const [catalogueLoading, setCatalogueLoading] = useState(true);
+  const [catalogueError, setCatalogueError] = useState("");
+  const [bookingForm, setBookingForm] = useState(EMPTY_BOOKING_FORM);
+  const [createLoading, setCreateLoading] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [createdBooking, setCreatedBooking] = useState(null);
 
   const visibleBookings = useMemo(
     () => bookings.slice(0, visibleCount),
     [bookings, visibleCount],
-  )
+  );
 
   const loadQueue = useCallback(async (signal) => {
-    setQueueLoading(true)
-    setQueueError('')
+    setQueueLoading(true);
+    setQueueError("");
 
     try {
-      const body = await apiRequest('/bookings?status=CREATED', { signal })
-      const items = Array.isArray(body) ? body : body?.items || []
+      const body = await apiRequest("/bookings?status=CREATED", { signal });
+      const items = Array.isArray(body) ? body : body?.items || [];
 
-      setBookings(items)
-      setVisibleCount(24)
-      setLastUpdated(new Date())
+      setBookings(items);
+      setVisibleCount(24);
+      setLastUpdated(new Date());
     } catch (requestError) {
-      if (requestError.name !== 'AbortError') {
+      if (requestError.name !== "AbortError") {
         setQueueError(
-          requestError.message || 'Unable to load the booking queue.',
-        )
+          requestError.message || "Unable to load the booking queue.",
+        );
       }
     } finally {
       if (!signal?.aborted) {
-        setQueueLoading(false)
+        setQueueLoading(false);
       }
     }
-  }, [])
+  }, []);
+
+  const loadServices = useCallback(async (signal) => {
+    setCatalogueLoading(true);
+    setCatalogueError("");
+
+    try {
+      const body = await apiRequest("/repair-services?activeOnly=true", {
+        signal,
+      });
+      const items = Array.isArray(body) ? body : body?.items || [];
+      setServices(items.filter((service) => service.isActive !== false));
+    } catch (requestError) {
+      if (requestError.name !== "AbortError") {
+        setCatalogueError(
+          requestError.message || "Unable to load the service catalogue.",
+        );
+      }
+    } finally {
+      if (!signal?.aborted) setCatalogueLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const controller = new AbortController()
+    const controller = new AbortController();
     const requestTimer = window.setTimeout(
       () => loadQueue(controller.signal),
       0,
-    )
+    );
 
     return () => {
-      window.clearTimeout(requestTimer)
-      controller.abort()
+      window.clearTimeout(requestTimer);
+      controller.abort();
+    };
+  }, [loadQueue]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const requestTimer = window.setTimeout(
+      () => loadServices(controller.signal),
+      0,
+    );
+
+    return () => {
+      window.clearTimeout(requestTimer);
+      controller.abort();
+    };
+  }, [loadServices]);
+
+  function updateBookingForm(event) {
+    const { name, value } = event.target;
+    setBookingForm((current) => ({ ...current, [name]: value }));
+  }
+
+  async function handleCreateBooking(event) {
+    event.preventDefault();
+    setCreateError("");
+    setCreatedBooking(null);
+
+    const [startHour, startMinute] = bookingForm.availableStartTime
+      .split(":")
+      .map(Number);
+    const [endHour, endMinute] = bookingForm.availableEndTime
+      .split(":")
+      .map(Number);
+
+    if (endHour * 60 + endMinute - (startHour * 60 + startMinute) < 60) {
+      setCreateError("The available time window must be at least 60 minutes.");
+      return;
     }
-  }, [loadQueue])
+
+    setCreateLoading(true);
+
+    try {
+      const result = await apiRequest("/bookings", {
+        method: "POST",
+        body: JSON.stringify({
+          customerId: bookingForm.customerId.trim(),
+          customerFullName: bookingForm.customerFullName.trim(),
+          serviceId: bookingForm.serviceId,
+          issueDescription: bookingForm.issueDescription.trim(),
+          preferredServiceDate: bookingForm.preferredServiceDate,
+          availableStartTime: bookingForm.availableStartTime,
+          availableEndTime: bookingForm.availableEndTime,
+          serviceAddress: {
+            streetNumber: bookingForm.streetNumber.trim(),
+            streetName: bookingForm.streetName.trim(),
+            ward: bookingForm.ward.trim(),
+            provinceCode: bookingForm.provinceCode.trim() || null,
+            provinceName: bookingForm.provinceName.trim() || null,
+          },
+          originChannel: "SBP",
+        }),
+      });
+
+      setCreatedBooking(result);
+      setBookingForm(EMPTY_BOOKING_FORM);
+      loadQueue();
+    } catch (requestError) {
+      setCreateError(requestError.message || "Unable to create the booking.");
+    } finally {
+      setCreateLoading(false);
+    }
+  }
+
+  function openCreatedBooking() {
+    if (!createdBooking?.bookingRef) return;
+    setView("workflow");
+    setSearchRef(createdBooking.bookingRef);
+    loadBooking(createdBooking.bookingRef);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   async function loadBooking(reference = searchRef) {
-    const trimmedReference = reference.trim()
+    const trimmedReference = reference.trim();
 
     if (!trimmedReference) {
-      setWorkflowError('Enter a booking reference.')
-      return
+      setWorkflowError("Enter a booking reference.");
+      return;
     }
 
-    setWorkflowLoading(true)
-    setWorkflowError('')
-    setNotice('')
+    setWorkflowLoading(true);
+    setWorkflowError("");
+    setNotice("");
 
     try {
       const result = await apiRequest(
         `/bookings/${encodeURIComponent(trimmedReference)}`,
-      )
+      );
 
-      setSearchRef(trimmedReference)
-      setBooking(result)
+      setSearchRef(trimmedReference);
+      setBooking(result);
     } catch (requestError) {
-      setBooking(null)
-      setWorkflowError(requestError.message || 'Unable to retrieve the booking.')
+      setBooking(null);
+      setWorkflowError(
+        requestError.message || "Unable to retrieve the booking.",
+      );
     } finally {
-      setWorkflowLoading(false)
+      setWorkflowLoading(false);
     }
   }
 
   function openBooking(reference) {
-    setView('workflow')
-    setSearchRef(reference)
-    loadBooking(reference)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    setView("workflow");
+    setSearchRef(reference);
+    loadBooking(reference);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function submitTransition(path, payload, successMessage) {
-    setActionLoading(true)
-    setWorkflowError('')
-    setNotice('')
+    setActionLoading(true);
+    setWorkflowError("");
+    setNotice("");
 
     try {
       const result = await apiRequest(
         `/bookings/${encodeURIComponent(booking.bookingRef)}${path}`,
         {
-          method: 'PATCH',
+          method: "PATCH",
           body: JSON.stringify(payload),
         },
-      )
+      );
 
-      setBooking(result)
-      setNotice(successMessage)
-      loadQueue()
+      setBooking(result);
+      setNotice(successMessage);
+      loadQueue();
     } catch (requestError) {
-      setWorkflowError(requestError.message || 'Unable to update the booking.')
+      setWorkflowError(requestError.message || "Unable to update the booking.");
     } finally {
-      setActionLoading(false)
+      setActionLoading(false);
     }
   }
 
   function handleConfirmation(event) {
-    event.preventDefault()
+    event.preventDefault();
 
     submitTransition(
-      '/confirmation',
+      "/confirmation",
       {
         estimatedServiceFee: Number(estimatedServiceFee),
         estimatedDurationMinutes: Number(estimatedDurationMinutes),
       },
-      'Booking confirmed successfully.',
-    )
+      "Booking confirmed successfully.",
+    );
   }
 
   function handleTechnicianChange(technicianId) {
@@ -184,38 +313,38 @@ function App() {
       currentIds.includes(technicianId)
         ? currentIds.filter((id) => id !== technicianId)
         : [...currentIds, technicianId],
-    )
+    );
   }
 
   function handleScheduling(event) {
-    event.preventDefault()
+    event.preventDefault();
 
     if (technicianIds.length === 0) {
-      setWorkflowError('Select at least one Technician.')
-      return
+      setWorkflowError("Select at least one Technician.");
+      return;
     }
 
     submitTransition(
-      '/schedule',
+      "/schedule",
       {
         scheduledAt,
         technicianIds,
       },
-      'Booking scheduled successfully.',
-    )
+      "Booking scheduled successfully.",
+    );
   }
 
   function handleCompletion(event) {
-    event.preventDefault()
+    event.preventDefault();
 
     submitTransition(
-      '/completion',
+      "/completion",
       {
         completedServiceFee: Number(completedServiceFee),
         materialCost: Number(materialCost),
       },
-      'Booking completed successfully.',
-    )
+      "Booking completed successfully.",
+    );
   }
 
   return (
@@ -232,16 +361,24 @@ function App() {
         <nav className="nav-tabs" aria-label="Portal navigation">
           <button
             type="button"
-            className={view === 'queue' ? 'active' : ''}
-            onClick={() => setView('queue')}
+            className={view === "book" ? "active" : ""}
+            onClick={() => setView("book")}
+          >
+            Book service
+          </button>
+
+          <button
+            type="button"
+            className={view === "queue" ? "active" : ""}
+            onClick={() => setView("queue")}
           >
             Reception queue
           </button>
 
           <button
             type="button"
-            className={view === 'workflow' ? 'active' : ''}
-            onClick={() => setView('workflow')}
+            className={view === "workflow" ? "active" : ""}
+            onClick={() => setView("workflow")}
           >
             Booking workflow
           </button>
@@ -249,7 +386,271 @@ function App() {
       </header>
 
       <main>
-        {view === 'queue' && (
+        {view === "book" && (
+          <>
+            <section className="page-heading">
+              <div>
+                <p className="eyebrow">Customer booking</p>
+                <h1>Book a repair service</h1>
+                <p className="subtitle">
+                  Choose an active service and provide the customer’s preferred
+                  visit details.
+                </p>
+              </div>
+            </section>
+
+            {catalogueLoading && (
+              <section className="state-card compact-state" aria-live="polite">
+                <div className="spinner" />
+                <div>
+                  <h2>Loading service catalogue</h2>
+                  <p>Retrieving the currently available repair services.</p>
+                </div>
+              </section>
+            )}
+
+            {!catalogueLoading && catalogueError && (
+              <section
+                className="state-card error-card compact-state"
+                role="alert"
+              >
+                <div>
+                  <h2>Catalogue unavailable</h2>
+                  <p>{catalogueError}</p>
+                </div>
+                <button type="button" onClick={() => loadServices()}>
+                  Try again
+                </button>
+              </section>
+            )}
+
+            {!catalogueLoading && !catalogueError && (
+              <div className="booking-form-layout">
+                <section className="catalogue-panel">
+                  <div className="section-heading">
+                    <div>
+                      <p className="eyebrow">Service catalogue</p>
+                      <h2>Available services</h2>
+                    </div>
+                    <span>{services.length} active</span>
+                  </div>
+
+                  {services.length === 0 ? (
+                    <p className="catalogue-empty">
+                      No active repair services are currently available.
+                    </p>
+                  ) : (
+                    <div className="service-list">
+                      {services.map((service) => (
+                        <label
+                          className={`service-option ${
+                            bookingForm.serviceId === service.serviceId
+                              ? "selected"
+                              : ""
+                          }`}
+                          key={service.serviceId}
+                        >
+                          <input
+                            type="radio"
+                            name="serviceId"
+                            value={service.serviceId}
+                            required
+                            checked={
+                              bookingForm.serviceId === service.serviceId
+                            }
+                            onChange={updateBookingForm}
+                          />
+                          <span>
+                            <strong>{service.serviceName}</strong>
+                            <small>{service.categoryName}</small>
+                          </span>
+                          <span className="service-meta">
+                            <strong>
+                              {formatMoney(service.baseServiceFee)}
+                            </strong>
+                            <small>
+                              {service.standardDurationMinutes} minutes
+                            </small>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                <form
+                  className="create-booking-form"
+                  onSubmit={handleCreateBooking}
+                >
+                  <div className="section-heading">
+                    <div>
+                      <p className="eyebrow">Booking request</p>
+                      <h2>Customer and visit details</h2>
+                    </div>
+                  </div>
+
+                  {createError && (
+                    <div className="message error-message" role="alert">
+                      {createError}
+                    </div>
+                  )}
+
+                  {createdBooking && (
+                    <div className="created-booking" role="status">
+                      <div>
+                        <span>Booking created successfully</span>
+                        <strong>{createdBooking.bookingRef}</strong>
+                        <small>{createdBooking.message}</small>
+                      </div>
+                      <button type="button" onClick={openCreatedBooking}>
+                        Open workflow
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="form-grid">
+                    <label>
+                      Customer ID
+                      <input
+                        name="customerId"
+                        required
+                        value={bookingForm.customerId}
+                        onChange={updateBookingForm}
+                        placeholder="CUST-001"
+                      />
+                    </label>
+
+                    <label>
+                      Customer full name
+                      <input
+                        name="customerFullName"
+                        required
+                        value={bookingForm.customerFullName}
+                        onChange={updateBookingForm}
+                        placeholder="Customer name"
+                      />
+                    </label>
+
+                    <label className="form-span">
+                      Issue description
+                      <textarea
+                        name="issueDescription"
+                        required
+                        minLength="10"
+                        maxLength="1000"
+                        rows="4"
+                        value={bookingForm.issueDescription}
+                        onChange={updateBookingForm}
+                        placeholder="Describe the repair issue in at least 10 characters."
+                      />
+                    </label>
+
+                    <label>
+                      Preferred service date
+                      <input
+                        type="date"
+                        name="preferredServiceDate"
+                        required
+                        min={todayAsInputValue()}
+                        value={bookingForm.preferredServiceDate}
+                        onChange={updateBookingForm}
+                      />
+                    </label>
+
+                    <div className="time-fields">
+                      <label>
+                        Available from
+                        <input
+                          type="time"
+                          name="availableStartTime"
+                          required
+                          value={bookingForm.availableStartTime}
+                          onChange={updateBookingForm}
+                        />
+                      </label>
+                      <label>
+                        Available until
+                        <input
+                          type="time"
+                          name="availableEndTime"
+                          required
+                          value={bookingForm.availableEndTime}
+                          onChange={updateBookingForm}
+                        />
+                      </label>
+                    </div>
+
+                    <label>
+                      Street number
+                      <input
+                        name="streetNumber"
+                        required
+                        value={bookingForm.streetNumber}
+                        onChange={updateBookingForm}
+                        placeholder="25"
+                      />
+                    </label>
+
+                    <label>
+                      Street name
+                      <input
+                        name="streetName"
+                        required
+                        value={bookingForm.streetName}
+                        onChange={updateBookingForm}
+                        placeholder="Nguyen Hue Street"
+                      />
+                    </label>
+
+                    <label>
+                      Ward
+                      <input
+                        name="ward"
+                        required
+                        value={bookingForm.ward}
+                        onChange={updateBookingForm}
+                        placeholder="Ward 1"
+                      />
+                    </label>
+
+                    <label>
+                      Province code
+                      <input
+                        name="provinceCode"
+                        value={bookingForm.provinceCode}
+                        onChange={updateBookingForm}
+                        placeholder="HCM"
+                      />
+                    </label>
+
+                    <label className="form-span">
+                      Province name
+                      <input
+                        name="provinceName"
+                        required={!bookingForm.provinceCode.trim()}
+                        value={bookingForm.provinceName}
+                        onChange={updateBookingForm}
+                        placeholder="Ho Chi Minh City (optional when code is provided)"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="form-footer">
+                    <span>Origin channel: SBP</span>
+                    <button
+                      type="submit"
+                      disabled={createLoading || services.length === 0}
+                    >
+                      {createLoading ? "Creating booking…" : "Create booking"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+          </>
+        )}
+
+        {view === "queue" && (
           <>
             <section className="page-heading">
               <div>
@@ -266,23 +667,23 @@ function App() {
                 onClick={() => loadQueue()}
                 disabled={queueLoading}
               >
-                {queueLoading ? 'Refreshing…' : 'Refresh queue'}
+                {queueLoading ? "Refreshing…" : "Refresh queue"}
               </button>
             </section>
 
             <section className="summary-card" aria-label="Queue summary">
               <div>
                 <span>Awaiting confirmation</span>
-                <strong>{queueLoading ? '—' : bookings.length}</strong>
+                <strong>{queueLoading ? "—" : bookings.length}</strong>
               </div>
 
               <p>
                 {lastUpdated
-                  ? `Updated ${lastUpdated.toLocaleTimeString('en-AU', {
-                      hour: '2-digit',
-                      minute: '2-digit',
+                  ? `Updated ${lastUpdated.toLocaleTimeString("en-AU", {
+                      hour: "2-digit",
+                      minute: "2-digit",
                     })}`
-                  : 'Waiting for API response'}
+                  : "Waiting for API response"}
               </p>
             </section>
 
@@ -355,8 +756,7 @@ function App() {
                         <div>
                           <dt>Service</dt>
                           <dd>
-                            {queueBooking.serviceName ||
-                              queueBooking.serviceId}
+                            {queueBooking.serviceName || queueBooking.serviceId}
                           </dd>
                         </div>
 
@@ -411,7 +811,7 @@ function App() {
           </>
         )}
 
-        {view === 'workflow' && (
+        {view === "workflow" && (
           <>
             <section className="page-heading">
               <div>
@@ -426,8 +826,8 @@ function App() {
             <form
               className="search-card"
               onSubmit={(event) => {
-                event.preventDefault()
-                loadBooking()
+                event.preventDefault();
+                loadBooking();
               }}
             >
               <label htmlFor="booking-reference">Booking reference</label>
@@ -441,7 +841,7 @@ function App() {
                 />
 
                 <button type="submit" disabled={workflowLoading}>
-                  {workflowLoading ? 'Searching…' : 'Find booking'}
+                  {workflowLoading ? "Searching…" : "Find booking"}
                 </button>
               </div>
             </form>
@@ -463,9 +863,7 @@ function App() {
                 <section className="booking-overview">
                   <div className="booking-card-header">
                     <div>
-                      <span className="reference-label">
-                        Booking reference
-                      </span>
+                      <span className="reference-label">Booking reference</span>
                       <h2>{booking.bookingRef}</h2>
                     </div>
 
@@ -507,7 +905,7 @@ function App() {
                       <dd>
                         {booking.estimatedDurationMinutes
                           ? `${booking.estimatedDurationMinutes} minutes`
-                          : 'Not recorded'}
+                          : "Not recorded"}
                       </dd>
                     </div>
 
@@ -525,13 +923,13 @@ function App() {
                                 (technician) =>
                                   `${technician.fullName} (${technician.technicianId})`,
                               )
-                              .join(', ')
-                          : 'Not assigned'}
+                              .join(", ")
+                          : "Not assigned"}
                       </dd>
                     </div>
                   </dl>
 
-                  {booking.status === 'COMPLETED' && (
+                  {booking.status === "COMPLETED" && (
                     <div className="cost-summary">
                       <div>
                         <span>Service fee</span>
@@ -554,7 +952,7 @@ function App() {
                 </section>
 
                 <section className="transition-panel">
-                  {booking.status === 'CREATED' && (
+                  {booking.status === "CREATED" && (
                     <form onSubmit={handleConfirmation}>
                       <p className="eyebrow">Next transition</p>
                       <h2>Confirm booking</h2>
@@ -586,12 +984,12 @@ function App() {
                       </label>
 
                       <button type="submit" disabled={actionLoading}>
-                        {actionLoading ? 'Confirming…' : 'Confirm booking'}
+                        {actionLoading ? "Confirming…" : "Confirm booking"}
                       </button>
                     </form>
                   )}
 
-                  {booking.status === 'CONFIRMED' && (
+                  {booking.status === "CONFIRMED" && (
                     <form onSubmit={handleScheduling}>
                       <p className="eyebrow">Next transition</p>
                       <h2>Schedule booking</h2>
@@ -622,9 +1020,7 @@ function App() {
                                 technician.technicianId,
                               )}
                               onChange={() =>
-                                handleTechnicianChange(
-                                  technician.technicianId,
-                                )
+                                handleTechnicianChange(technician.technicianId)
                               }
                             />
 
@@ -637,12 +1033,12 @@ function App() {
                       </fieldset>
 
                       <button type="submit" disabled={actionLoading}>
-                        {actionLoading ? 'Scheduling…' : 'Schedule booking'}
+                        {actionLoading ? "Scheduling…" : "Schedule booking"}
                       </button>
                     </form>
                   )}
 
-                  {booking.status === 'SCHEDULED' && (
+                  {booking.status === "SCHEDULED" && (
                     <form onSubmit={handleCompletion}>
                       <p className="eyebrow">Next transition</p>
                       <h2>Complete booking</h2>
@@ -674,12 +1070,12 @@ function App() {
                       </label>
 
                       <button type="submit" disabled={actionLoading}>
-                        {actionLoading ? 'Completing…' : 'Complete booking'}
+                        {actionLoading ? "Completing…" : "Complete booking"}
                       </button>
                     </form>
                   )}
 
-                  {booking.status === 'COMPLETED' && (
+                  {booking.status === "COMPLETED" && (
                     <div className="completed-panel">
                       <p className="eyebrow">Workflow complete</p>
                       <h2>Service completed</h2>
@@ -695,7 +1091,7 @@ function App() {
         )}
       </main>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;
