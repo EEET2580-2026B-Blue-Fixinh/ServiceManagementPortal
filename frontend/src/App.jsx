@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { apiRequest } from './api'
 import './App.css'
 
-const API_BASE_URL = (
-  import.meta.env.VITE_API_BASE_URL || 'http://localhost:9443/api/v1'
-).replace(/\/$/, '')
-
-const SERVICE_TOKEN = import.meta.env.VITE_SMT_SERVICE_TOKEN || ''
+const SEEDED_TECHNICIANS = [
+  { technicianId: 'TECH-001', fullName: 'Nguyen Minh Anh' },
+  { technicianId: 'TECH-002', fullName: 'Tran Quoc Bao' },
+  { technicianId: 'TECH-003', fullName: 'Le Thu Ha' },
+]
 
 function formatDate(value) {
   if (!value) return 'Not provided'
@@ -17,57 +18,79 @@ function formatDate(value) {
   }).format(new Date(`${value}T00:00:00`))
 }
 
+function formatDateTime(value) {
+  if (!value) return 'Not provided'
+
+  return new Intl.DateTimeFormat('en-AU', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
+}
+
 function formatTime(value) {
   return value ? value.slice(0, 5) : '—'
 }
 
+function formatMoney(value) {
+  if (value === null || value === undefined) return 'Not recorded'
+
+  return new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency: 'VND',
+    maximumFractionDigits: 0,
+  }).format(value)
+}
+
 function App() {
+  const [view, setView] = useState('queue')
   const [bookings, setBookings] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [queueLoading, setQueueLoading] = useState(true)
+  const [queueError, setQueueError] = useState('')
   const [lastUpdated, setLastUpdated] = useState(null)
+  const [visibleCount, setVisibleCount] = useState(24)
 
-  const loadBookings = useCallback(async (signal) => {
-    setLoading(true)
-    setError('')
+  const [searchRef, setSearchRef] = useState('')
+  const [booking, setBooking] = useState(null)
+  const [workflowLoading, setWorkflowLoading] = useState(false)
+  const [workflowError, setWorkflowError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [actionLoading, setActionLoading] = useState(false)
 
-    if (!SERVICE_TOKEN) {
-      setError('VITE_SMT_SERVICE_TOKEN is not configured.')
-      setLoading(false)
-      return
-    }
+  const [estimatedServiceFee, setEstimatedServiceFee] = useState('')
+  const [estimatedDurationMinutes, setEstimatedDurationMinutes] = useState('')
+  const [scheduledAt, setScheduledAt] = useState('')
+  const [technicianIds, setTechnicianIds] = useState([])
+  const [completedServiceFee, setCompletedServiceFee] = useState('')
+  const [materialCost, setMaterialCost] = useState('')
+
+  const visibleBookings = useMemo(
+    () => bookings.slice(0, visibleCount),
+    [bookings, visibleCount],
+  )
+
+  const loadQueue = useCallback(async (signal) => {
+    setQueueLoading(true)
+    setQueueError('')
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/bookings?status=CREATED`,
-        {
-          signal,
-          headers: {
-            Authorization: `Bearer ${SERVICE_TOKEN}`,
-            Accept: 'application/json',
-          },
-        },
-      )
-
-      const body = await response.json().catch(() => null)
-
-      if (!response.ok) {
-        throw new Error(
-          body?.message || `The booking API returned HTTP ${response.status}.`,
-        )
-      }
-
+      const body = await apiRequest('/bookings?status=CREATED', { signal })
       const items = Array.isArray(body) ? body : body?.items || []
 
       setBookings(items)
+      setVisibleCount(24)
       setLastUpdated(new Date())
     } catch (requestError) {
       if (requestError.name !== 'AbortError') {
-        setError(requestError.message || 'Unable to load the booking queue.')
+        setQueueError(
+          requestError.message || 'Unable to load the booking queue.',
+        )
       }
     } finally {
       if (!signal?.aborted) {
-        setLoading(false)
+        setQueueLoading(false)
       }
     }
   }, [])
@@ -75,7 +98,7 @@ function App() {
   useEffect(() => {
     const controller = new AbortController()
     const requestTimer = window.setTimeout(
-      () => loadBookings(controller.signal),
+      () => loadQueue(controller.signal),
       0,
     )
 
@@ -83,7 +106,117 @@ function App() {
       window.clearTimeout(requestTimer)
       controller.abort()
     }
-  }, [loadBookings])
+  }, [loadQueue])
+
+  async function loadBooking(reference = searchRef) {
+    const trimmedReference = reference.trim()
+
+    if (!trimmedReference) {
+      setWorkflowError('Enter a booking reference.')
+      return
+    }
+
+    setWorkflowLoading(true)
+    setWorkflowError('')
+    setNotice('')
+
+    try {
+      const result = await apiRequest(
+        `/bookings/${encodeURIComponent(trimmedReference)}`,
+      )
+
+      setSearchRef(trimmedReference)
+      setBooking(result)
+    } catch (requestError) {
+      setBooking(null)
+      setWorkflowError(requestError.message || 'Unable to retrieve the booking.')
+    } finally {
+      setWorkflowLoading(false)
+    }
+  }
+
+  function openBooking(reference) {
+    setView('workflow')
+    setSearchRef(reference)
+    loadBooking(reference)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  async function submitTransition(path, payload, successMessage) {
+    setActionLoading(true)
+    setWorkflowError('')
+    setNotice('')
+
+    try {
+      const result = await apiRequest(
+        `/bookings/${encodeURIComponent(booking.bookingRef)}${path}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify(payload),
+        },
+      )
+
+      setBooking(result)
+      setNotice(successMessage)
+      loadQueue()
+    } catch (requestError) {
+      setWorkflowError(requestError.message || 'Unable to update the booking.')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  function handleConfirmation(event) {
+    event.preventDefault()
+
+    submitTransition(
+      '/confirmation',
+      {
+        estimatedServiceFee: Number(estimatedServiceFee),
+        estimatedDurationMinutes: Number(estimatedDurationMinutes),
+      },
+      'Booking confirmed successfully.',
+    )
+  }
+
+  function handleTechnicianChange(technicianId) {
+    setTechnicianIds((currentIds) =>
+      currentIds.includes(technicianId)
+        ? currentIds.filter((id) => id !== technicianId)
+        : [...currentIds, technicianId],
+    )
+  }
+
+  function handleScheduling(event) {
+    event.preventDefault()
+
+    if (technicianIds.length === 0) {
+      setWorkflowError('Select at least one Technician.')
+      return
+    }
+
+    submitTransition(
+      '/schedule',
+      {
+        scheduledAt,
+        technicianIds,
+      },
+      'Booking scheduled successfully.',
+    )
+  }
+
+  function handleCompletion(event) {
+    event.preventDefault()
+
+    submitTransition(
+      '/completion',
+      {
+        completedServiceFee: Number(completedServiceFee),
+        materialCost: Number(materialCost),
+      },
+      'Booking completed successfully.',
+    )
+  }
 
   return (
     <div className="app-shell">
@@ -96,124 +229,469 @@ function App() {
           </div>
         </div>
 
-        <span className="environment">Reception workspace</span>
+        <nav className="nav-tabs" aria-label="Portal navigation">
+          <button
+            type="button"
+            className={view === 'queue' ? 'active' : ''}
+            onClick={() => setView('queue')}
+          >
+            Reception queue
+          </button>
+
+          <button
+            type="button"
+            className={view === 'workflow' ? 'active' : ''}
+            onClick={() => setView('workflow')}
+          >
+            Booking workflow
+          </button>
+        </nav>
       </header>
 
       <main>
-        <section className="page-heading">
-          <div>
-            <p className="eyebrow">Booking operations</p>
-            <h1>Reception queue</h1>
-            <p className="subtitle">
-              Review newly created service bookings awaiting confirmation.
-            </p>
-          </div>
+        {view === 'queue' && (
+          <>
+            <section className="page-heading">
+              <div>
+                <p className="eyebrow">Booking operations</p>
+                <h1>Reception queue</h1>
+                <p className="subtitle">
+                  Review newly created service bookings awaiting confirmation.
+                </p>
+              </div>
 
-          <button
-            className="refresh-button"
-            type="button"
-            onClick={() => loadBookings()}
-            disabled={loading}
-          >
-            {loading ? 'Refreshing…' : 'Refresh queue'}
-          </button>
-        </section>
+              <button
+                className="refresh-button"
+                type="button"
+                onClick={() => loadQueue()}
+                disabled={queueLoading}
+              >
+                {queueLoading ? 'Refreshing…' : 'Refresh queue'}
+              </button>
+            </section>
 
-        <section className="summary-card" aria-label="Queue summary">
-          <div>
-            <span>Awaiting confirmation</span>
-            <strong>{loading ? '—' : bookings.length}</strong>
-          </div>
+            <section className="summary-card" aria-label="Queue summary">
+              <div>
+                <span>Awaiting confirmation</span>
+                <strong>{queueLoading ? '—' : bookings.length}</strong>
+              </div>
 
-          <p>
-            {lastUpdated
-              ? `Updated ${lastUpdated.toLocaleTimeString('en-AU', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}`
-              : 'Waiting for API response'}
-          </p>
-        </section>
+              <p>
+                {lastUpdated
+                  ? `Updated ${lastUpdated.toLocaleTimeString('en-AU', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}`
+                  : 'Waiting for API response'}
+              </p>
+            </section>
 
-        {loading && (
-          <section className="state-card" aria-live="polite">
-            <div className="spinner" />
-            <div>
-              <h2>Loading bookings</h2>
-              <p>Connecting to the SMT booking service.</p>
-            </div>
-          </section>
-        )}
+            {queueLoading && (
+              <section className="state-card" aria-live="polite">
+                <div className="spinner" />
+                <div>
+                  <h2>Loading bookings</h2>
+                  <p>Connecting to the SMT booking service.</p>
+                </div>
+              </section>
+            )}
 
-        {!loading && error && (
-          <section className="state-card error-card" role="alert">
-            <div>
-              <h2>Queue unavailable</h2>
-              <p>{error}</p>
-            </div>
-
-            <button type="button" onClick={() => loadBookings()}>
-              Try again
-            </button>
-          </section>
-        )}
-
-        {!loading && !error && bookings.length === 0 && (
-          <section className="state-card empty-card">
-            <div>
-              <h2>No bookings are waiting</h2>
-              <p>The CREATED booking queue is currently empty.</p>
-            </div>
-          </section>
-        )}
-
-        {!loading && !error && bookings.length > 0 && (
-          <section className="booking-grid" aria-label="Created bookings">
-            {bookings.map((booking) => (
-              <article className="booking-card" key={booking.bookingRef}>
-                <div className="booking-card-header">
-                  <div>
-                    <span className="reference-label">Booking reference</span>
-                    <h2>{booking.bookingRef}</h2>
-                  </div>
-
-                  <span className="status-badge">{booking.status}</span>
+            {!queueLoading && queueError && (
+              <section className="state-card error-card" role="alert">
+                <div>
+                  <h2>Queue unavailable</h2>
+                  <p>{queueError}</p>
                 </div>
 
-                <dl className="booking-details">
-                  <div>
-                    <dt>Customer</dt>
-                    <dd>{booking.customerFullName || booking.customerId}</dd>
-                  </div>
+                <button type="button" onClick={() => loadQueue()}>
+                  Try again
+                </button>
+              </section>
+            )}
 
-                  <div>
-                    <dt>Service</dt>
-                    <dd>{booking.serviceName || booking.serviceId}</dd>
-                  </div>
+            {!queueLoading && !queueError && bookings.length === 0 && (
+              <section className="state-card empty-card">
+                <div>
+                  <h2>No bookings are waiting</h2>
+                  <p>The CREATED booking queue is currently empty.</p>
+                </div>
+              </section>
+            )}
 
-                  <div>
-                    <dt>Preferred date</dt>
-                    <dd>{formatDate(booking.preferredServiceDate)}</dd>
-                  </div>
+            {!queueLoading && !queueError && bookings.length > 0 && (
+              <>
+                <p className="result-count">
+                  Showing {visibleBookings.length} of {bookings.length} bookings
+                </p>
 
-                  <div>
-                    <dt>Available time</dt>
-                    <dd>
-                      {formatTime(booking.availableStartTime)}–
-                      {formatTime(booking.availableEndTime)}
-                    </dd>
-                  </div>
-                </dl>
+                <section className="booking-grid" aria-label="Created bookings">
+                  {visibleBookings.map((queueBooking) => (
+                    <article
+                      className="booking-card"
+                      key={queueBooking.bookingRef}
+                    >
+                      <div className="booking-card-header">
+                        <div>
+                          <span className="reference-label">
+                            Booking reference
+                          </span>
+                          <h2>{queueBooking.bookingRef}</h2>
+                        </div>
 
-                {booking.issueDescription && (
-                  <div className="issue">
-                    <span>Customer notes</span>
-                    <p>{booking.issueDescription}</p>
+                        <span className="status-badge">
+                          {queueBooking.status}
+                        </span>
+                      </div>
+
+                      <dl className="booking-details">
+                        <div>
+                          <dt>Customer</dt>
+                          <dd>
+                            {queueBooking.customerFullName ||
+                              queueBooking.customerId}
+                          </dd>
+                        </div>
+
+                        <div>
+                          <dt>Service</dt>
+                          <dd>
+                            {queueBooking.serviceName ||
+                              queueBooking.serviceId}
+                          </dd>
+                        </div>
+
+                        <div>
+                          <dt>Preferred date</dt>
+                          <dd>
+                            {formatDate(queueBooking.preferredServiceDate)}
+                          </dd>
+                        </div>
+
+                        <div>
+                          <dt>Available time</dt>
+                          <dd>
+                            {formatTime(queueBooking.availableStartTime)}–
+                            {formatTime(queueBooking.availableEndTime)}
+                          </dd>
+                        </div>
+                      </dl>
+
+                      {queueBooking.issueDescription && (
+                        <div className="issue">
+                          <span>Customer notes</span>
+                          <p>{queueBooking.issueDescription}</p>
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        className="card-action"
+                        onClick={() => openBooking(queueBooking.bookingRef)}
+                      >
+                        Open booking
+                      </button>
+                    </article>
+                  ))}
+                </section>
+
+                {visibleCount < bookings.length && (
+                  <div className="load-more">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setVisibleCount((currentCount) => currentCount + 24)
+                      }
+                    >
+                      Load more bookings
+                    </button>
                   </div>
                 )}
-              </article>
-            ))}
-          </section>
+              </>
+            )}
+          </>
+        )}
+
+        {view === 'workflow' && (
+          <>
+            <section className="page-heading">
+              <div>
+                <p className="eyebrow">Booking operations</p>
+                <h1>Booking workflow</h1>
+                <p className="subtitle">
+                  Retrieve a booking and complete its valid next transition.
+                </p>
+              </div>
+            </section>
+
+            <form
+              className="search-card"
+              onSubmit={(event) => {
+                event.preventDefault()
+                loadBooking()
+              }}
+            >
+              <label htmlFor="booking-reference">Booking reference</label>
+
+              <div>
+                <input
+                  id="booking-reference"
+                  value={searchRef}
+                  onChange={(event) => setSearchRef(event.target.value)}
+                  placeholder="ORD-2026-4159"
+                />
+
+                <button type="submit" disabled={workflowLoading}>
+                  {workflowLoading ? 'Searching…' : 'Find booking'}
+                </button>
+              </div>
+            </form>
+
+            {workflowError && (
+              <div className="message error-message" role="alert">
+                {workflowError}
+              </div>
+            )}
+
+            {notice && (
+              <div className="message success-message" role="status">
+                {notice}
+              </div>
+            )}
+
+            {booking && (
+              <div className="workflow-layout">
+                <section className="booking-overview">
+                  <div className="booking-card-header">
+                    <div>
+                      <span className="reference-label">
+                        Booking reference
+                      </span>
+                      <h2>{booking.bookingRef}</h2>
+                    </div>
+
+                    <span
+                      className={`status-badge status-${booking.status.toLowerCase()}`}
+                    >
+                      {booking.status}
+                    </span>
+                  </div>
+
+                  <dl className="detail-grid">
+                    <div>
+                      <dt>Customer</dt>
+                      <dd>{booking.customerFullName}</dd>
+                    </div>
+
+                    <div>
+                      <dt>Customer ID</dt>
+                      <dd>{booking.customerId}</dd>
+                    </div>
+
+                    <div>
+                      <dt>Service</dt>
+                      <dd>{booking.serviceName}</dd>
+                    </div>
+
+                    <div>
+                      <dt>Preferred date</dt>
+                      <dd>{formatDate(booking.preferredServiceDate)}</dd>
+                    </div>
+
+                    <div>
+                      <dt>Scheduled time</dt>
+                      <dd>{formatDateTime(booking.scheduledAt)}</dd>
+                    </div>
+
+                    <div>
+                      <dt>Estimated duration</dt>
+                      <dd>
+                        {booking.estimatedDurationMinutes
+                          ? `${booking.estimatedDurationMinutes} minutes`
+                          : 'Not recorded'}
+                      </dd>
+                    </div>
+
+                    <div>
+                      <dt>Estimated fee</dt>
+                      <dd>{formatMoney(booking.estimatedServiceFee)}</dd>
+                    </div>
+
+                    <div>
+                      <dt>Assigned Technicians</dt>
+                      <dd>
+                        {booking.technicians?.length
+                          ? booking.technicians
+                              .map(
+                                (technician) =>
+                                  `${technician.fullName} (${technician.technicianId})`,
+                              )
+                              .join(', ')
+                          : 'Not assigned'}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  {booking.status === 'COMPLETED' && (
+                    <div className="cost-summary">
+                      <div>
+                        <span>Service fee</span>
+                        <strong>
+                          {formatMoney(booking.completedServiceFee)}
+                        </strong>
+                      </div>
+
+                      <div>
+                        <span>Material cost</span>
+                        <strong>{formatMoney(booking.materialCost)}</strong>
+                      </div>
+
+                      <div>
+                        <span>Total cost</span>
+                        <strong>{formatMoney(booking.totalCost)}</strong>
+                      </div>
+                    </div>
+                  )}
+                </section>
+
+                <section className="transition-panel">
+                  {booking.status === 'CREATED' && (
+                    <form onSubmit={handleConfirmation}>
+                      <p className="eyebrow">Next transition</p>
+                      <h2>Confirm booking</h2>
+
+                      <label>
+                        Estimated service fee (VND)
+                        <input
+                          type="number"
+                          min="1"
+                          required
+                          value={estimatedServiceFee}
+                          onChange={(event) =>
+                            setEstimatedServiceFee(event.target.value)
+                          }
+                        />
+                      </label>
+
+                      <label>
+                        Estimated duration (minutes)
+                        <input
+                          type="number"
+                          min="1"
+                          required
+                          value={estimatedDurationMinutes}
+                          onChange={(event) =>
+                            setEstimatedDurationMinutes(event.target.value)
+                          }
+                        />
+                      </label>
+
+                      <button type="submit" disabled={actionLoading}>
+                        {actionLoading ? 'Confirming…' : 'Confirm booking'}
+                      </button>
+                    </form>
+                  )}
+
+                  {booking.status === 'CONFIRMED' && (
+                    <form onSubmit={handleScheduling}>
+                      <p className="eyebrow">Next transition</p>
+                      <h2>Schedule booking</h2>
+
+                      <label>
+                        Scheduled date and time
+                        <input
+                          type="datetime-local"
+                          required
+                          value={scheduledAt}
+                          onChange={(event) =>
+                            setScheduledAt(event.target.value)
+                          }
+                        />
+                      </label>
+
+                      <fieldset>
+                        <legend>Assign Technicians</legend>
+
+                        {SEEDED_TECHNICIANS.map((technician) => (
+                          <label
+                            className="technician-option"
+                            key={technician.technicianId}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={technicianIds.includes(
+                                technician.technicianId,
+                              )}
+                              onChange={() =>
+                                handleTechnicianChange(
+                                  technician.technicianId,
+                                )
+                              }
+                            />
+
+                            <span>
+                              <strong>{technician.fullName}</strong>
+                              <small>{technician.technicianId}</small>
+                            </span>
+                          </label>
+                        ))}
+                      </fieldset>
+
+                      <button type="submit" disabled={actionLoading}>
+                        {actionLoading ? 'Scheduling…' : 'Schedule booking'}
+                      </button>
+                    </form>
+                  )}
+
+                  {booking.status === 'SCHEDULED' && (
+                    <form onSubmit={handleCompletion}>
+                      <p className="eyebrow">Next transition</p>
+                      <h2>Complete booking</h2>
+
+                      <label>
+                        Completed service fee (VND)
+                        <input
+                          type="number"
+                          min="1"
+                          required
+                          value={completedServiceFee}
+                          onChange={(event) =>
+                            setCompletedServiceFee(event.target.value)
+                          }
+                        />
+                      </label>
+
+                      <label>
+                        Material cost (VND)
+                        <input
+                          type="number"
+                          min="0"
+                          required
+                          value={materialCost}
+                          onChange={(event) =>
+                            setMaterialCost(event.target.value)
+                          }
+                        />
+                      </label>
+
+                      <button type="submit" disabled={actionLoading}>
+                        {actionLoading ? 'Completing…' : 'Complete booking'}
+                      </button>
+                    </form>
+                  )}
+
+                  {booking.status === 'COMPLETED' && (
+                    <div className="completed-panel">
+                      <p className="eyebrow">Workflow complete</p>
+                      <h2>Service completed</h2>
+                      <p>
+                        This booking has completed the committed SMT workflow.
+                      </p>
+                    </div>
+                  )}
+                </section>
+              </div>
+            )}
+          </>
         )}
       </main>
     </div>
